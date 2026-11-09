@@ -25,12 +25,12 @@ Strategies compared (unstacked):
 ## Result
 Headline: mean expected cost per transaction on stratified 5-fold validation predictions, with a 95% CI from the fold-level standard error (t-distribution, 4 df; mean ± t(0.975,4) x s/sqrt(5)), alongside the fold (min, max). Naive always-legitimate costs are 0.01665 (ratio 10) and 0.16653 (ratio 100).
 
-| Strategy | cost r=10 (mean, 95% CI) | cost r=100 (mean, 95% CI) | AP |
-|---|---|---|---|
-| no repair (0.5) | 0.00677 (0.00555, 0.00799) | 0.06625 (0.05361, 0.07888) | 0.756 (0.712, 0.808) |
-| formula tau* | 0.00401 (0.00266, 0.00537) | 0.02454 (0.01694, 0.03214) | 0.756 (same scores) |
-| CV-chosen tau | 0.00360 (0.00235, 0.00485) | 0.02453 (0.01561, 0.03344) | 0.756 (same scores) |
-| class weight balanced | 0.02659 (0.02311, 0.03007) | 0.04047 (0.03475, 0.04618) | 0.744 (0.691, 0.776) |
+Strategy               cost r=10 (mean, 95% CI)    cost r=100 (mean, 95% CI)   AP
+---------------------  --------------------------  --------------------------  --------------------
+no repair (0.5)        0.00677 (0.00555, 0.00799)  0.06625 (0.05361, 0.07888)  0.756 (0.712, 0.808)
+formula tau*           0.00401 (0.00266, 0.00537)  0.02454 (0.01694, 0.03214)  0.756 (same scores)
+CV-chosen tau          0.00360 (0.00235, 0.00485)  0.02453 (0.01561, 0.03344)  0.756 (same scores)
+class weight balanced  0.02659 (0.02311, 0.03007)  0.04047 (0.03475, 0.04618)  0.744 (0.691, 0.776)
 
 No-repair precision@0.5 = 0.863, recall@0.5 = 0.603. Formula tau* at ratio 100 raises recall to 0.865 (precision 0.415). Balanced weights at 0.5 get recall 0.907 but precision only 0.057, so they lose at ratio 10 to false positives. At ratio 100, CV-chosen tau and formula tau* are statistically indistinguishable (their 95% CIs overlap almost entirely: [0.0156, 0.0334] vs [0.0169, 0.0321]) — call this a tie, not a win for CV-tau. At ratio 10 the gap between the threshold repairs and no-repair/balanced is real (CIs don't overlap). Stratified paired bootstrap intervals will be computed on the held-out test set once all methods are run.
 
