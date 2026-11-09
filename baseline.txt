@@ -1,7 +1,7 @@
 # Which Fraud-Detection Strategy Works Best Under Severe Class Imbalance?
 
 ## Group
-Canvas: [fill in group number]
+Canvas: Group Sigma
 Members: Sumit, Urav, Mahalakshmi
 
 ## Changes since the proposal
