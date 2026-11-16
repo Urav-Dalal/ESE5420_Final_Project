@@ -1,0 +1,20 @@
+% Minimal NeurIPS-like helpers for course draft compilation.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neurips_2024}[2024/01/01 Minimal NeurIPS-like package]
+
+\RequirePackage{times}
+\RequirePackage{microtype}
+\RequirePackage{amsmath,amssymb,amsfonts}
+\RequirePackage{graphicx}
+\RequirePackage{booktabs}
+\RequirePackage{url}
+\RequirePackage{hyperref}
+\RequirePackage{caption}
+\captionsetup{font=small,labelfont=bf}
+
+\newcommand{\fixabstract}[1]{%
+  \begin{center}{\large\bfseries Abstract}\end{center}
+  \vspace{0.5em}
+  {\small #1\par}
+  \vspace{1em}
+}

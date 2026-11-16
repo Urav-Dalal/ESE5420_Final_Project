@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .DS_Store
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+results/draft_test_predictions.npz
