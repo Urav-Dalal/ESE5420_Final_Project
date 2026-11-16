@@ -1,5 +1,9 @@
 # NeurIPS-style early draft
 
+## PDF
+
+Compiled draft: [`draft.pdf`](draft.pdf)
+
 ## Build
 
 From this `paper/` directory:
