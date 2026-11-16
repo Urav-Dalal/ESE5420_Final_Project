@@ -1,0 +1,324 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{neurips_2024}
+
+\title{Which Fraud-Detection Repair Works Best under Severe Class Imbalance?}
+\author{
+  Sumit Pradeep Kolpe \and Urav Dalal \and Mahalakshmi Phaldesai \\
+  ESE~5420 Final Project (Canvas Group Sigma) \\
+  University of Pennsylvania
+}
+\date{Early draft --- November 2026}
+
+\begin{document}
+\maketitle
+
+\fixabstract{
+Credit-card fraud is extremely rare (about $0.17\%$ of transactions), so accuracy and even ranking metrics can hide whether a repair actually reduces decision cost.
+We ask: for logistic regression and histogram gradient boosting, which of no repair, a Bayes (formula) threshold, a cost-minimizing CV-chosen threshold, class weighting, or random undersampling yields the lowest expected cost at predeclared ratios $c_{\mathrm{FN}}/c_{\mathrm{FP}}\in\{10,100\}$ on a test set used once?
+On OpenML CreditCardFraudDetection (ID~42175), after dropping exact duplicates and replacing raw \texttt{Time} with time-of-day, we tune models by stratified validation Average Precision, then evaluate with paired stratified bootstrap confidence intervals ($B{=}1000$).
+Average Precision cannot separate threshold moves from no repair on the same scores.
+At ratio~10, logistic regression with a CV-chosen threshold is best (cost $\approx 0.0043$) and is tied with formula threshold and undersampling.
+At ratio~100, class-weighted histogram gradient boosting is best (cost $\approx 0.0318$), ahead of logistic threshold repairs.
+Class weighting on logistic regression alone is too aggressive at ratio~10.
+}
+
+\section{Introduction}
+Missed fraud (false negatives) and false alarms (false positives) have asymmetric costs.
+Banks therefore care about an \emph{operating point}, not only about how scores rank.
+Our proposal originally emphasized Average Precision (AP).
+Instructor feedback sharpened the question: AP depends only on ranking, so a moved threshold has exactly the AP of no repair, and class weights or undersampling in logistic regression mostly shift the intercept.
+Expected cost
+\begin{equation}
+  \mathrm{Cost}=\frac{c_{\mathrm{FP}}\cdot\mathrm{FP}+c_{\mathrm{FN}}\cdot\mathrm{FN}}{n}
+\end{equation}
+changes as soon as the decision threshold moves.
+We freeze two hypothetical cost ratios, $c_{\mathrm{FN}}/c_{\mathrm{FP}}=10$ and $100$ (with $c_{\mathrm{FP}}=1$), and compare unstacked repairs for two model families.
+
+\paragraph{Contributions.}
+(1)~A leakage-aware split: exact duplicate transactions are removed before splitting.
+(2)~A locked protocol: stratified $80/20$ holdout (seed~42), tuning only on training folds, test scored once.
+(3)~A full $2\times 5$ repair matrix with paired stratified bootstrap intervals and calibration diagnostics.
+
+\section{Related work}
+\paragraph{Class imbalance.}
+Learning with rare positives is a long-standing problem in supervised learning~\cite{he2009learning,japkowicz2002class}.
+Surveys group remedies into data-level methods (undersampling / oversampling), algorithm-level methods (class weights, loss reweighting), and decision-level methods (threshold moving)~\cite{he2009learning,krawczyk2016learning}.
+Random undersampling of the majority class is simple and often competitive, but discards information and can inflate variance~\cite{drummond2003c4}.
+Synthetic oversampling (e.g., SMOTE) is popular~\cite{chawla2002smote}; we omit it here because instructor feedback asked for threshold, weights, and undersampling as the primary named repairs, and because oversampling can interact poorly with leakage-prone pipelines if not confined to training folds.
+
+\paragraph{Cost-sensitive learning and thresholds.}
+When false negatives and false positives have different costs, the Bayes-optimal threshold under well-calibrated probabilities is
+$\tau^{\star}=c_{\mathrm{FP}}/(c_{\mathrm{FP}}+c_{\mathrm{FN}})$~\cite{elkan2001foundations,provost2001robust}.
+If scores are miscalibrated, a validation-chosen operating point can outperform $\tau^{\star}$~\cite{zadrozny2001learning}.
+We therefore compare formula $\tau^{\star}$ with a cost-minimizing threshold chosen on training predictions, without stacking it on top of class weights.
+
+\paragraph{Ranking metrics versus operating cost.}
+Precision--recall analysis and Average Precision are standard for rare-event ranking~\cite{davis2006relationship,saito2015precision}.
+AP integrates over thresholds and therefore cannot distinguish two classifiers that share the same ranking but use different cuts---exactly the situation for threshold repairs.
+Expected cost at a stated ratio is an explicit decision metric and is our headline~\cite{drummond2006machine}.
+
+\paragraph{Models for tabular fraud data.}
+Logistic regression remains a strong, calibrated baseline for tabular binary classification~\cite{hosmer2013applied}.
+Gradient boosting and its histogram approximations are strong tabular learners~\cite{friedman2001greedy,ke2017lightgbm}; we use scikit-learn's \texttt{HistGradientBoostingClassifier} for speed as recommended in course feedback.
+Prior credit-card fraud benchmarks on the ULB/OpenML extract often report high accuracy that is misleading at a $0.17\%$ base rate~\cite{dal2015credit}; we instead emphasize cost and AP.
+
+\paragraph{Calibration.}
+Platt scaling and related methods adjust probabilities after training~\cite{platt1999probabilistic,niculescu2005predicting}.
+Tree ensembles are often less calibrated than logistic models~\cite{niculescu2005predicting}, which motivates reporting reliability diagrams and treating $\tau^{\star}$ with caution for HistGB.
+We keep repairs \emph{unstacked}: each of no repair, formula $\tau^{\star}$, CV-chosen $\tau$, class weights, and undersampling is evaluated as its own cell.
+
+\section{Methods}
+\subsection{Data and split}
+We use the OpenML dataset CreditCardFraudDetection (ID~42175),\footnote{Source and download link: \url{https://www.openml.org/d/42175}.} the public ULB credit-card fraud extract: $N{=}284{,}807$ transactions, $492$ frauds ($\approx 0.173\%$), $30$ numeric inputs (\texttt{Time}, \texttt{Amount}, PCA components $V_1$--$V_{28}$) and binary label \texttt{Class}, with no missing values.
+The extract contains $1{,}081$ exact duplicate rows ($19$ fraud).
+Left in place, a random split can put one copy in training and its twin in validation/test.
+We drop duplicates first, leaving $N{=}283{,}726$ and $473$ frauds.
+Raw \texttt{Time} (seconds since the first transaction) is replaced by $\texttt{Time\_of\_day}=\texttt{Time}\bmod 86400$ so a random split cannot exploit absolute position in the two-day file.
+We use a stratified $80/20$ train/test split with \texttt{random\_state}${}=42$: train $n{=}226{,}980$ ($378$ frauds); test $n{=}56{,}746$ ($95$ frauds).
+The test set is unused until all methods are locked.
+
+\subsection{Models}
+\paragraph{Course baseline.}
+The course baseline is L2 \textbf{logistic regression} with no imbalance repair and decision threshold $0.5$, fit in a pipeline with in-fold \texttt{StandardScaler}.
+We tune $C\in\{10^{-3},\ldots,10^{3}\}$ by mean stratified 5-fold validation AP on the training half only.
+\paragraph{Comparisons.}
+We compare that baseline to formula $\tau^{\star}$, CV-chosen $\tau$, \texttt{class\_weight='balanced'}, and random undersampling, and we repeat the same unstacked repairs for \textbf{HistGradientBoostingClassifier}, tuned over $\texttt{max\_depth}\in\{3,6\}$, $\texttt{learning\_rate}\in\{0.05,0.1\}$, $\texttt{max\_iter}\in\{100,200\}$, again by mean validation AP (no scaler).
+
+\subsection{Imbalance strategies (unstacked)}
+\begin{itemize}
+  \item \textbf{No repair:} threshold $\tau{=}0.5$.
+  \item \textbf{Formula threshold:} $\tau^{\star}=1/(1+r)$ for each ratio $r$ (approx.\ $0.091$ and $0.010$).
+  \item \textbf{CV-chosen threshold:} choose $\tau$ on full-training predicted probabilities to minimize expected cost on a threshold grid; apply that $\tau$ on test.
+  \item \textbf{Class weights:} \texttt{class\_weight='balanced'} with $\tau{=}0.5$.
+  \item \textbf{Undersampling:} keep all frauds in the fitting sample and randomly down-sample non-frauds to a $1{:}1$ ratio (\texttt{random\_state}${}=42$), then predict with $\tau{=}0.5$.
+\end{itemize}
+Threshold strategies share the no-repair scores of the same model, so their AP is identical by construction.
+Class weight and undersampling retune hyperparameters separately.
+
+\subsection{Evaluation}
+Headline metric: expected cost at $r\in\{10,100\}$.
+Secondary: AP, precision, and recall.
+On the held-out test set we run $B{=}1000$ \emph{paired stratified} bootstraps: resample frauds and non-frauds separately and score every method on the same indices.
+We report means and $2.5$--$97.5\%$ percentiles; overlapping intervals are reported as ties.
+Naive comparators: always-legitimate cost $=r\cdot\pi$ and always-fraud cost $\approx 1-\pi$ on the test base rate $\pi$.
+We also report out-of-fold reliability diagrams and Brier scores for no-repair models.
+
+\section{Experiments}
+Selected hyperparameters (validation AP): logistic no-repair $C{=}1$; balanced $C{=}1000$; undersampled $C{=}0.001$.
+HistGB no-repair and balanced: $(\texttt{depth},\texttt{lr},\texttt{iter})=(6,0.05,100)$; undersampled: $(3,0.05,100)$.
+CV-chosen thresholds on the training scores are $\tau_{10}{\approx}0.019$ (LR) and $0.036$ (HistGB); at ratio~100, LR selects $\tau{\approx}0.0099$ (coinciding with $\tau^{\star}$) while HistGB selects a lower cut $\tau{\approx}0.0026$.
+
+\section{Results}
+\begin{table*}[t]
+\centering
+\caption{Test-set expected cost and AP with paired stratified bootstrap 95\% intervals ($B{=}1000$). Boldface marks the lowest mean cost in each ratio column (ties noted in text).}
+\label{tab:main}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcccc}
+\toprule
+Model & Strategy & Cost $r{=}10$ & Cost $r{=}100$ & AP \\
+\midrule
+LR & no repair ($0.5$) & $0.0072$ $[0.0056,0.0089]$ & $0.0708$ $[0.0547,0.0882]$ & $0.693$ \\
+LR & formula $\tau^{\star}$ & $0.0047$ $[0.0033,0.0062]$ & $0.0369$ $[0.0244,0.0495]$ & $0.693$ \\
+LR & CV-chosen $\tau$ & $\mathbf{0.0043}$ $[0.0030,0.0057]$ & $0.0369$ $[0.0244,0.0495]$ & $0.693$ \\
+LR & class weight & $0.0272$ $[0.0255,0.0289]$ & $0.0463$ $[0.0355,0.0575]$ & $0.678$ \\
+LR & undersample & $0.0044$ $[0.0031,0.0059]$ & $0.0426$ $[0.0284,0.0566]$ & $0.698$ \\
+\midrule
+HistGB & no repair ($0.5$) & $0.0064$ $[0.0048,0.0081]$ & $0.0571$ $[0.0413,0.0731]$ & $0.551$ \\
+HistGB & formula $\tau^{\star}$ & $0.0063$ $[0.0048,0.0079]$ & $0.0514$ $[0.0370,0.0673]$ & $0.551$ \\
+HistGB & CV-chosen $\tau$ & $0.0066$ $[0.0051,0.0082]$ & $0.0527$ $[0.0384,0.0687]$ & $0.551$ \\
+HistGB & class weight & $0.0064$ $[0.0051,0.0078]$ & $\mathbf{0.0318}$ $[0.0193,0.0446]$ & $0.721$ \\
+HistGB & undersample & $0.0205$ $[0.0190,0.0222]$ & $0.0412$ $[0.0299,0.0535]$ & $0.699$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_cost_ap.png}
+\caption{Test expected cost (left) and AP (right) with paired stratified bootstrap 95\% CIs. Threshold moves share AP with no repair for each model.}
+\label{fig:cost}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/fig_calibration.png}
+\caption{Out-of-fold reliability for no-repair models. Logistic regression is better calibrated (Brier $0.00069$) than HistGB (Brier $0.00093$), consistent with formula $\tau^{\star}$ working well for LR.}
+\label{fig:cal}
+\end{figure}
+
+Table~\ref{tab:main} and Figure~\ref{fig:cost} summarize the locked test evaluation.
+Always-legitimate costs on the test base rate are about $0.0167$ ($r{=}10$) and $0.167$ ($r{=}100$); all serious methods beat these.
+
+\paragraph{Ratio 10.}
+Logistic CV-chosen $\tau$ has the lowest mean cost ($0.0043$).
+Its interval overlaps formula $\tau^{\star}$ ($0.0047$) and undersampling ($0.0044$): we call these a \textbf{tie} for practical purposes.
+Class-weighted logistic regression is clearly worse ($0.027$), driven by very low precision ($\approx 0.055$) despite high recall.
+HistGB threshold repairs do not beat the best logistic threshold repairs at this milder asymmetry.
+
+\paragraph{Ratio 100.}
+Class-weighted HistGB attains the lowest mean cost ($0.0318$) with the highest AP among all cells ($0.721$).
+Logistic formula and CV-chosen thresholds are tied with each other at $0.0369$ (same cut $\tau^{\star}$), and their intervals overlap the HistGB class-weight interval only partially at the upper end---point estimate favors HistGB+weights, but with $95$ test frauds we treat strong claims cautiously.
+Undersampled HistGB is worse at ratio~10 (many false positives) and only middling at ratio~100.
+
+\paragraph{AP as a second panel.}
+As predicted, formula and CV thresholds inherit the no-repair AP exactly ($0.693$ for LR; $0.551$ for weak no-repair HistGB).
+AP alone would have missed the large cost drop from moving LR's threshold and would have understated the value of class-weighted HistGB relative to LR thresholding at ratio~100.
+
+\paragraph{Calibration.}
+Figure~\ref{fig:cal} shows that no-repair logistic regression is better calibrated out of fold than HistGB, which helps explain why $\tau^{\star}$ matches the CV-chosen cut for LR at ratio~100, while HistGB's CV-chosen cut drifts lower.
+
+\section{Limitations}
+The cost ratios are hypothetical, not bank estimates.
+CV-chosen thresholds are selected from in-sample training probabilities (mildly optimistic for the cut itself; test cost remains honest).
+With only $95$ test frauds, bootstrap intervals are wide; several comparisons are ties.
+We do not stack repairs (e.g., weights plus a new threshold) and we omit oversampling/SMOTE by design.
+Hyperparameter selection by AP is itself slightly unstable in flat regions of the grid; we report the argmax but treat nearby settings as near-ties.
+
+\section{Conclusion}
+Under severe class imbalance, the best fraud \emph{repair} depends on both the cost ratio and the model family.
+AP is necessary for ranking quality but insufficient as a headline metric for threshold and prior-shift repairs: threshold moves leave AP unchanged by construction, while expected cost moves substantially.
+
+\paragraph{Common-metric model comparison.}
+To compare logistic regression and HistGB on one footing, we use the \emph{same} headline metric---expected cost---and, for each model, select the repair with the lowest bootstrap mean cost at each frozen ratio (Table~\ref{tab:compare}).
+We also report that repair's AP as a secondary ranking check.
+
+\begin{table}[t]
+\centering
+\caption{Best repair per model under the shared headline metric (expected cost; bootstrap means). Lower cost is better. Always-legitimate baselines are $0.0167$ ($r{=}10$) and $0.167$ ($r{=}100$).}
+\label{tab:compare}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llccc}
+\toprule
+Ratio & Model & Best repair & Cost & AP \\
+\midrule
+$10$ & LR & CV-chosen $\tau$ & $\mathbf{0.0043}$ & $0.693$ \\
+$10$ & HistGB & formula $\tau^{\star}$ & $0.0063$ & $0.551$ \\
+\midrule
+$100$ & LR & formula / CV $\tau$ & $0.0369$ & $0.693$ \\
+$100$ & HistGB & class weight & $\mathbf{0.0318}$ & $0.721$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At $r{=}10$, \textbf{LR beats HistGB} on expected cost ($0.0043$ vs.\ $0.0063$): a well-calibrated linear model with a moved threshold (or, nearly tied, undersampling) is enough, and HistGB's weaker no-repair ranking (AP $0.551$) limits how much thresholding can help.
+At $r{=}100$, \textbf{HistGB beats LR} ($0.0318$ vs.\ $0.0369$) when HistGB is trained with class weights, which also yields the best AP in the study ($0.721$).
+Thus neither model dominates across both ratios: prefer cost-tuned logistic decisions when the asymmetry is moderate, and prefer a class-weighted boosted model when missed fraud is priced much more heavily.
+Relative to always-legitimate screening, the best LR repair cuts cost by about $74\%$ at $r{=}10$, and the best HistGB repair cuts cost by about $81\%$ at $r{=}100$.
+
+\section{Remaining work before Analysis Complete (30 November)}
+This is an early draft: the locked test comparison above is preliminary, not the final analysis write-up.
+Before the Analysis Complete deadline we plan to finish the following.
+
+\paragraph{Paper sections still to complete.}
+\begin{itemize}
+  \item Polish Introduction and Related Work into final prose (length and citations are drafted; wording is not final).
+  \item Expand Experimental Setup into a standalone section with an explicit protocol diagram (split $\rightarrow$ CV tune $\rightarrow$ test once $\rightarrow$ bootstrap).
+  \item Add a dedicated Discussion separating statistical ties from practical recommendations for each cost ratio.
+  \item Finalize Limitations / Ethics (hypothetical costs; not a deployed fraud system) and a short Conclusion that matches the locked results only.
+\end{itemize}
+
+\paragraph{Experiments and analyses still to run.}
+\begin{itemize}
+  \item \textbf{Calibration repair:} apply isotonic or Platt scaling on out-of-fold HistGB scores, then re-evaluate formula $\tau^{\star}$ vs.\ CV-chosen $\tau$ (tests whether miscalibration explains HistGB's threshold gap).
+  \item \textbf{Predeclared stacking cell:} class weights followed by a CV-chosen threshold (one extra cell per model), only if listed before looking at new test summaries.
+  \item \textbf{Sensitivity:} report the flat $C$ / HistGB grid as near-ties; optionally freeze a predeclared $C$ (e.g.\ $1$) for LR instead of the noisy AP argmax.
+  \item \textbf{Error-bar presentation:} keep paired stratified bootstrap as primary; add fold-level spreads from training CV next to bootstrap intervals in the final key figure.
+  \item \textbf{Reproducibility pack:} freeze random seeds, environment pins, and a one-command script that regenerates Table~\ref{tab:main} and Figures~\ref{fig:cost}--\ref{fig:cal}.
+\end{itemize}
+We will not reopen the held-out test set for model or threshold selection; any new method is locked on training CV first, then scored on test once with the same paired bootstrap protocol.
+
+\begin{thebibliography}{99}
+\bibitem{chawla2002smote}
+N.~V. Chawla, K.~W. Bowyer, L.~O. Hall, and W.~P. Kegelmeyer.
+\newblock SMOTE: Synthetic minority over-sampling technique.
+\newblock \emph{JAIR}, 2002.
+
+\bibitem{dal2015credit}
+A.~Dal Pozzolo, O.~Caelen, R.~A. Johnson, and G.~Bontempi.
+\newblock Calibrating probability with undersampling for unbalanced classification.
+\newblock In \emph{IEEE SSCI}, 2015.
+
+\bibitem{davis2006relationship}
+J.~Davis and M.~Goadrich.
+\newblock The relationship between Precision-Recall and ROC curves.
+\newblock In \emph{ICML}, 2006.
+
+\bibitem{drummond2003c4}
+C.~Drummond and R.~C. Holte.
+\newblock C4.5, class imbalance, and cost sensitivity: Why under-sampling beats over-sampling.
+\newblock In \emph{ICML Workshop on Learning from Imbalanced Datasets}, 2003.
+
+\bibitem{drummond2006machine}
+C.~Drummond and R.~C. Holte.
+\newblock Cost curves: An improved method for visualizing classifier performance.
+\newblock \emph{Machine Learning}, 2006.
+
+\bibitem{elkan2001foundations}
+C.~Elkan.
+\newblock The foundations of cost-sensitive learning.
+\newblock In \emph{IJCAI}, 2001.
+
+\bibitem{friedman2001greedy}
+J.~H. Friedman.
+\newblock Greedy function approximation: A gradient boosting machine.
+\newblock \emph{Annals of Statistics}, 2001.
+
+\bibitem{he2009learning}
+H.~He and E.~A. Garcia.
+\newblock Learning from imbalanced data.
+\newblock \emph{IEEE TKDE}, 2009.
+
+\bibitem{hosmer2013applied}
+D.~W. Hosmer~Jr., S.~Lemeshow, and R.~X. Sturdivant.
+\newblock \emph{Applied Logistic Regression}.
+\newblock Wiley, 3rd edition, 2013.
+
+\bibitem{japkowicz2002class}
+N.~Japkowicz and S.~Stephen.
+\newblock The class imbalance problem: A systematic study.
+\newblock \emph{Intelligent Data Analysis}, 2002.
+
+\bibitem{ke2017lightgbm}
+G.~Ke et~al.
+\newblock LightGBM: A highly efficient gradient boosting decision tree.
+\newblock In \emph{NeurIPS}, 2017.
+
+\bibitem{krawczyk2016learning}
+B.~Krawczyk.
+\newblock Learning from imbalanced data: Open challenges and future directions.
+\newblock \emph{Progress in Artificial Intelligence}, 2016.
+
+\bibitem{niculescu2005predicting}
+A.~Niculescu-Mizil and R.~Caruana.
+\newblock Predicting good probabilities with supervised learning.
+\newblock In \emph{ICML}, 2005.
+
+\bibitem{platt1999probabilistic}
+J.~Platt.
+\newblock Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods.
+\newblock In \emph{Advances in Large Margin Classifiers}, 1999.
+
+\bibitem{provost2001robust}
+F.~Provost and T.~Fawcett.
+\newblock Robust classification for imprecise environments.
+\newblock \emph{Machine Learning}, 2001.
+
+\bibitem{saito2015precision}
+T.~Saito and M.~Rehmsmeier.
+\newblock The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets.
+\newblock \emph{PLOS ONE}, 2015.
+
+\bibitem{zadrozny2001learning}
+B.~Zadrozny and C.~Elkan.
+\newblock Learning and making decisions when costs and probabilities are both unknown.
+\newblock In \emph{KDD}, 2001.
+\end{thebibliography}
+
+\section*{Reproducibility}
+Code: \url{https://github.com/Urav-Dalal/ESE5420_Final_Project}.
+Run \texttt{python experiments\_draft.py} from the repo root (caches OpenML data under \texttt{data/}; writes figures and JSON under \texttt{results/}).
+This early draft uses those artifacts.
+
+\end{document}
