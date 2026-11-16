@@ -70,7 +70,7 @@ We keep repairs \emph{unstacked}: each of no repair, formula $\tau^{\star}$, CV-
 
 \section{Methods}
 \subsection{Data and split}
-We use OpenML dataset CreditCardFraudDetection (ID~42175): $N{=}284{,}807$ transactions, $492$ frauds, features \texttt{Time}, \texttt{Amount}, and PCA components $V_1$--$V_{28}$.
+We use the OpenML dataset CreditCardFraudDetection (ID~42175),\footnote{Source and download link: \url{https://www.openml.org/d/42175}.} the public ULB credit-card fraud extract: $N{=}284{,}807$ transactions, $492$ frauds ($\approx 0.173\%$), $30$ numeric inputs (\texttt{Time}, \texttt{Amount}, PCA components $V_1$--$V_{28}$) and binary label \texttt{Class}, with no missing values.
 The extract contains $1{,}081$ exact duplicate rows ($19$ fraud).
 Left in place, a random split can put one copy in training and its twin in validation/test.
 We drop duplicates first, leaving $N{=}283{,}726$ and $473$ frauds.
@@ -79,9 +79,11 @@ We use a stratified $80/20$ train/test split with \texttt{random\_state}${}=42$:
 The test set is unused until all methods are locked.
 
 \subsection{Models}
-\textbf{Logistic regression} (L2) is fit in a pipeline with in-fold \texttt{StandardScaler}.
-We tune $C\in\{10^{-3},\ldots,10^{3}\}$ by mean stratified 5-fold validation AP.
-\textbf{HistGradientBoostingClassifier} is tuned over $\texttt{max\_depth}\in\{3,6\}$, $\texttt{learning\_rate}\in\{0.05,0.1\}$, $\texttt{max\_iter}\in\{100,200\}$, again by mean validation AP (no scaler).
+\paragraph{Course baseline.}
+The course baseline is L2 \textbf{logistic regression} with no imbalance repair and decision threshold $0.5$, fit in a pipeline with in-fold \texttt{StandardScaler}.
+We tune $C\in\{10^{-3},\ldots,10^{3}\}$ by mean stratified 5-fold validation AP on the training half only.
+\paragraph{Comparisons.}
+We compare that baseline to formula $\tau^{\star}$, CV-chosen $\tau$, \texttt{class\_weight='balanced'}, and random undersampling, and we repeat the same unstacked repairs for \textbf{HistGradientBoostingClassifier}, tuned over $\texttt{max\_depth}\in\{3,6\}$, $\texttt{learning\_rate}\in\{0.05,0.1\}$, $\texttt{max\_iter}\in\{100,200\}$, again by mean validation AP (no scaler).
 
 \subsection{Imbalance strategies (unstacked)}
 \begin{itemize}
@@ -204,7 +206,28 @@ At $r{=}10$, \textbf{LR beats HistGB} on expected cost ($0.0043$ vs.\ $0.0063$):
 At $r{=}100$, \textbf{HistGB beats LR} ($0.0318$ vs.\ $0.0369$) when HistGB is trained with class weights, which also yields the best AP in the study ($0.721$).
 Thus neither model dominates across both ratios: prefer cost-tuned logistic decisions when the asymmetry is moderate, and prefer a class-weighted boosted model when missed fraud is priced much more heavily.
 Relative to always-legitimate screening, the best LR repair cuts cost by about $74\%$ at $r{=}10$, and the best HistGB repair cuts cost by about $81\%$ at $r{=}100$.
-Future work includes predeclared stacking (weights then retuned $\tau$) and explicit recalibration before applying $\tau^{\star}$ to tree ensembles.
+
+\section{Remaining work before Analysis Complete (30 November)}
+This is an early draft: the locked test comparison above is preliminary, not the final analysis write-up.
+Before the Analysis Complete deadline we plan to finish the following.
+
+\paragraph{Paper sections still to complete.}
+\begin{itemize}
+  \item Polish Introduction and Related Work into final prose (length and citations are drafted; wording is not final).
+  \item Expand Experimental Setup into a standalone section with an explicit protocol diagram (split $\rightarrow$ CV tune $\rightarrow$ test once $\rightarrow$ bootstrap).
+  \item Add a dedicated Discussion separating statistical ties from practical recommendations for each cost ratio.
+  \item Finalize Limitations / Ethics (hypothetical costs; not a deployed fraud system) and a short Conclusion that matches the locked results only.
+\end{itemize}
+
+\paragraph{Experiments and analyses still to run.}
+\begin{itemize}
+  \item \textbf{Calibration repair:} apply isotonic or Platt scaling on out-of-fold HistGB scores, then re-evaluate formula $\tau^{\star}$ vs.\ CV-chosen $\tau$ (tests whether miscalibration explains HistGB's threshold gap).
+  \item \textbf{Predeclared stacking cell:} class weights followed by a CV-chosen threshold (one extra cell per model), only if listed before looking at new test summaries.
+  \item \textbf{Sensitivity:} report the flat $C$ / HistGB grid as near-ties; optionally freeze a predeclared $C$ (e.g.\ $1$) for LR instead of the noisy AP argmax.
+  \item \textbf{Error-bar presentation:} keep paired stratified bootstrap as primary; add fold-level spreads from training CV next to bootstrap intervals in the final key figure.
+  \item \textbf{Reproducibility pack:} freeze random seeds, environment pins, and a one-command script that regenerates Table~\ref{tab:main} and Figures~\ref{fig:cost}--\ref{fig:cal}.
+\end{itemize}
+We will not reopen the held-out test set for model or threshold selection; any new method is locked on training CV first, then scored on test once with the same paired bootstrap protocol.
 
 \begin{thebibliography}{99}
 \bibitem{chawla2002smote}
